@@ -3,6 +3,10 @@ from matplotlib import pyplot as plt
 import pandas as pd
 import os, math, glob
 
+import tensorflow as tf
+from tensorflow.keras.layers import *
+from tensorflow.keras.models import Model
+
 def prepare_data():
 	dataset_dir = '../CIS'
 
@@ -39,6 +43,7 @@ def prepare_data():
 			subject_n_data.append(n_data)
 
 		# print(np.min(subject_n_data), np.mean(subject_n_data), np.max(subject_n_data))
+		all_data.append(subject_data)
 		all_n_data.append(subject_n_data)
 
 	return subject_ids, measurement_ids, all_data, all_n_data, on_off_labels, dyskinesia_labels, tremor_labels
@@ -139,7 +144,33 @@ def baseline(which='all'):
 		print('Achieved a min score of {} with {}'.format(np.min(final_scores), np.arange(0, 4.001, 0.001)[np.argmin(final_scores)]))
 		print(len(subject_ids), len(mse_values), len(n_values))
 
-baseline()
+def cleaned_data(all_data, on_off_labels):
+
+	################################################## ON-OFF
+
+	X, y = [], [] # X ~ (subjects, datapoints, timesteps, 3)
+	for idx, subject_label in enumerate(on_off_labels):
+		# X_subject is a list of np arrays shape (timesteps, 3)
+		X_subject, y_subject = [], []
+		for jdx, label in enumerate(subject_label):
+			if not math.isnan(label):
+				y_subject.append(np.float32(label))
+				X_subject.append(all_data[idx][jdx].astype(np.float32))
+		if len(X_subject)!=0:	X.append(X_subject)
+		if len(y_subject)!=0:	y.append(y_subject)
+
+	return X, y
+
+# def create_model(input_shape):
+# 	x = Input(shape=input_shape)
+# 	x = Conv1D(16, 3, )
+
+# baseline()
+_, _, all_data, _, on_off_labels, dyskinesia_labels, tremor_labels = prepare_data()
+X_on_off, y_on_off = cleaned_data(all_data, on_off_labels)
+print(len(X_on_off), len(y_on_off))
+print(len(X_on_off[0]), len(y_on_off[0]))
+print(X_on_off[0][0].shape, y_on_off[0][0])
 
 
 
