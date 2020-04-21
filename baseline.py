@@ -3,9 +3,9 @@ from matplotlib import pyplot as plt
 import pandas as pd
 import os, math, glob
 
-import tensorflow as tf
-from tensorflow.keras.layers import *
-from tensorflow.keras.models import Model
+# import tensorflow as tf
+# from tensorflow.keras.layers import *
+# from tensorflow.keras.models import Model
 
 def prepare_data():
 	dataset_dir = '../CIS'
@@ -144,12 +144,10 @@ def baseline(which='all'):
 		print('Achieved a min score of {} with {}'.format(np.min(final_scores), np.arange(0, 4.001, 0.001)[np.argmin(final_scores)]))
 		print(len(subject_ids), len(mse_values), len(n_values))
 
-def cleaned_data(all_data, on_off_labels):
-
-	################################################## ON-OFF
+def cleaned_data(all_data, labels):
 
 	X, y = [], [] # X ~ (subjects, datapoints, timesteps, 3)
-	for idx, subject_label in enumerate(on_off_labels):
+	for idx, subject_label in enumerate(labels):
 		# X_subject is a list of np arrays shape (timesteps, 3)
 		X_subject, y_subject = [], []
 		for jdx, label in enumerate(subject_label):
