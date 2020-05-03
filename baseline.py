@@ -19,8 +19,8 @@ os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
 def prepare_data(condition=False):
+	
 	dataset_dir = '../CIS'
-
 	# data_files = sorted(glob.glob(os.path.join(dataset_dir, 'training_data/*.csv')))
 	label_file = glob.glob(os.path.join(dataset_dir, 'data_labels/CIS-PD_Training_Data_IDs_Labels.csv'))[0]
 	labels_df = pd.read_csv(label_file)
