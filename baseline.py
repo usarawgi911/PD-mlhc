@@ -18,7 +18,7 @@ from tensorflow.keras.regularizers import l1, l2
 import tensorflow.keras.backend as K
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="6"
+os.environ["CUDA_VISIBLE_DEVICES"]="5"
 
 def prepare_data(condition=False):
 	'''
@@ -453,6 +453,135 @@ def pad(x, pad_value=-2, length='max'):
 
 	return np.array(padded)
 
+def plot_predictions(X, Y, medication, folds=5):
+
+	model_dir = 'models-re'
+	all_train_scores, all_val_scores, all_val_rounded_scores = [], [], []
+
+	for index, x in enumerate(X):
+		if int(subject_ids[index]) != 1043: # Plotting for ID 1043
+			x = pad(x).astype(np.float32)
+			p = np.random.permutation(x.shape[0])
+			continue
+		print('\nLoading models for subject {}\n'.format(subject_ids[index]))
+		x = pad(x).astype(np.float32)
+		y = np.array(Y[index]).astype(np.float32)
+		p = np.random.permutation(x.shape[0])
+		x, y = x[p], y[p]
+		med = np.array(medication[index])[p]
+		fold = 0
+		train_scores, val_scores, val_rounded_scores = [], [], []
+		all_preds, all_true = [], []
+		for train_index, val_index in KFold(folds).split(x):
+			fold+=1
+			print('Fold {}\n'.format(fold))
+			x_train, x_val = x[train_index], x[val_index]
+			y_train, y_val = y[train_index], y[val_index]
+			med_train, med_val = med[train_index], med[val_index]
+			med_train, med_val = tf.keras.utils.to_categorical(med_train, num_classes=5), tf.keras.utils.to_categorical(med_val, num_classes=5)
+			scalers = {}
+			for i in range(x_train.shape[1]):
+				scalers[i] = StandardScaler()
+				x_train[:, i, :] = scalers[i].fit_transform(x_train[:, i, :]) 
+
+			for i in range(x_val.shape[1]):
+				x_val[:, i, :] = scalers[i].transform(x_val[:, i, :])
+
+			model = tf.keras.models.load_model(os.path.join(model_dir, str(subject_ids[index]), '{}.h5'.format(fold)))
+			if condition==True:
+				train_preds = model.predict(x_train)
+				val_preds = model.predict(x_val)
+				train_score = math.sqrt(model.evaluate(x_train, y_train, verbose=0))
+				val_score = math.sqrt(model.evaluate(x_val, y_val, verbose=0))
+				for i in np.squeeze(val_preds):
+					all_preds.append(i)
+			else:
+				train_preds = model.predict([x_train, med_train])
+				val_preds = model.predict([x_val, med_val])
+				train_score = math.sqrt(model.evaluate([x_train, med_train], y_train, verbose=0))
+				val_score = math.sqrt(model.evaluate([x_val, med_val], y_val, verbose=0))
+				for i in np.squeeze(val_preds):
+					all_preds.append(i)
+
+			for i in y_val:
+				all_true.append(i)
+	
+			train_scores.append(train_score)
+			val_scores.append(val_score)
+			val_rounded_score = mean_squared_error(y_val, np.squeeze(np.around(val_preds), axis=-1), squared=False)
+			val_rounded_scores.append(val_rounded_score)
+
+		# all_train_scores.append(train_scores)
+		# all_val_scores.append(val_scores)
+		# all_val_rounded_scores.append(val_rounded_scores)
+		print(train_scores)
+		print('Mean Train: {}'.format(np.mean(train_scores)))
+		print(val_scores)
+		print('Mean Val: {}'.format(np.mean(val_scores)))
+
+		print('\nTrue values:')
+		print(all_true)
+		print('\nPredicted values:')
+		print(all_preds)
+
+		fig, ax = plt.subplots()
+		ax.scatter(all_true, all_preds, facecolors='none', edgecolors='r')
+		plt.xlabel('True tremor severity')
+		plt.ylabel('Predicted tremor severity')
+		plt.xlim(-0.5,4.5)
+		plt.ylim(0.5,4.5)
+		plt.xticks(list(range(5)))
+		plt.yticks(list(range(5)))
+		# ax.plot([0,4],[0,4], linestyle ='-', linewidth=1.0)
+
+		# Plotting x=y
+		lims = [np.min([ax.get_xlim(), ax.get_ylim()]), np.max([ax.get_xlim(), ax.get_ylim()]),]
+		ax.plot(lims, lims, 'k--', linewidth=1.0, alpha=0.75, zorder=0)
+		ax.set_aspect('equal')
+		ax.set_xlim(lims)
+		ax.set_ylim(lims)
+
+		# lims = [np.min([plt.get_xlim(), plt.get_ylim()]), np.max([plt.get_xlim(), plt.get_ylim()]),]
+		# plt.plot(lims, lims, 'k-', alpha=0.75, zorder=0)
+		# plt.set_aspect('equal')
+		# plt.set_xlim(lims)
+		# plt.set_ylim(lims)
+		plt.show()
+
+	# subject_train_scores, subject_val_scores = [], []
+	# print('~ FINAL RESULTS ~')
+	# for i in range(len(all_train_scores)):
+	# 	print()
+	# 	print('Subject:', subject_ids[i])
+	# 	print('Train scores:', [float('{:.3f}'.format(a)) for a in all_train_scores[i]])
+	# 	print('Mean: {:.3f}'.format(np.mean(all_train_scores[i])))
+	# 	print('Val scores:', [float('{:.3f}'.format(a)) for a in all_val_scores[i]])
+	# 	print('Mean: {:.3f}'.format(np.mean(all_val_scores[i])))
+	# 	subject_train_scores.append(np.mean(all_train_scores[i]))
+	# 	subject_val_scores.append(np.mean(all_val_scores[i]))
+
+	# final_train_score = np.mean(subject_train_scores)
+	# final_val_score = np.mean(subject_val_scores)
+
+	# final_train_weighted_score = sum(list(map(lambda i: len(measurement_ids[i])*subject_train_scores[i], range(len(subject_train_scores)))))
+	# final_train_weighted_score /= sum([len(j) for j in measurement_ids])
+	# final_val_weighted_score = sum(list(map(lambda i: len(measurement_ids[i])*subject_val_scores[i], range(len(subject_val_scores)))))
+	# final_val_weighted_score /= sum([len(j) for j in measurement_ids])
+
+	# final_train_root_weighted_score = sum(list(map(lambda i: math.sqrt(len(measurement_ids[i]))*subject_train_scores[i], range(len(subject_train_scores)))))
+	# final_train_root_weighted_score /= sum([math.sqrt(len(j)) for j in measurement_ids])
+	# final_val_root_weighted_score = sum(list(map(lambda i: math.sqrt(len(measurement_ids[i]))*subject_val_scores[i], range(len(subject_val_scores)))))
+	# final_val_root_weighted_score /= sum([math.sqrt(len(j)) for j in measurement_ids])
+
+	# print()
+	# print('Final train score: {:.3f}'.format(final_train_score))
+	# print('Final val score: {:.3f}'.format(final_val_score))
+	# print('Final weighted train score: {:.3f}'.format(final_train_weighted_score))
+	# print('Final weighted val score: {:.3f}'.format(final_val_weighted_score))
+	# print('Final root weighted train score: {:.3f}'.format(final_train_root_weighted_score))
+	# print('Final root weighted val score: {:.3f}'.format(final_val_root_weighted_score))
+
+
 def training(X, Y, medication, folds=5):
 	'''
 	Performs 5-fold cross-validated training per subject
@@ -486,8 +615,8 @@ def training(X, Y, medication, folds=5):
 		model_dir = 'models'
 		model_dir = 'models-re-re-re' # running in tmux 3 with scalers extenddata
 		model_dir = 'models-re-re-re-re' # running in tmux 4 w/o scalers extenddata
-		model_dir = 'models-getacc' # running in tmux 1 with scalers getAcc
-		model_dir = 'models-getacc-re' # running in tmux 5 w/o scalers getAcc
+		model_dir = 'models-getacc-re-re' # running in tmux 1 with scalers getAcc
+		# model_dir = 'models-getacc-re' # running in tmux 5 w/o scalers getAcc
 		timeString = time.strftime("%Y%m%d-%H%M%S", time.localtime())
 		log_name = '{}'.format(timeString)
 		log_name = str(model_dir)
@@ -504,13 +633,13 @@ def training(X, Y, medication, folds=5):
 			print('x train shape', x_train.shape)
 			print('x val shape', x_val.shape)
 
-			# scalers = {}
-			# for i in range(x_train.shape[1]):
-			# 	scalers[i] = StandardScaler()
-			# 	x_train[:, i, :] = scalers[i].fit_transform(x_train[:, i, :]) 
+			scalers = {}
+			for i in range(x_train.shape[1]):
+				scalers[i] = StandardScaler()
+				x_train[:, i, :] = scalers[i].fit_transform(x_train[:, i, :]) 
 
-			# for i in range(x_val.shape[1]):
-			# 	x_val[:, i, :] = scalers[i].transform(x_val[:, i, :])
+			for i in range(x_val.shape[1]):
+				x_val[:, i, :] = scalers[i].transform(x_val[:, i, :])
 			
 			model = create_model(input_shape=x_train.shape[1:])
 
@@ -536,13 +665,13 @@ def training(X, Y, medication, folds=5):
 								batch_size=batch_size,
 								epochs=epochs,
 								verbose=1,
-								callbacks=[checkpointer, tensorboard, es],
+								# callbacks=[checkpointer, tensorboard, es],
 								validation_data=([x_val, med_val], y_val))				
 
 			es_epoch = es.stopped_epoch
 			print(es_epoch)
-			if es_epoch==patience:
-				raise Exception('Fold {} for subject {} not training'.format(fold, str(subject_ids[index])))
+			# if es_epoch==patience:
+			# 	raise Exception('Fold {} for subject {} not training'.format(fold, str(subject_ids[index])))
 
 			model = tf.keras.models.load_model(os.path.join(model_dir, str(subject_ids[index]), '{}.h5'.format(fold)))
 			
@@ -636,19 +765,15 @@ def training(X, Y, medication, folds=5):
 condition = False
 # subject_ids, _, all_data, _, on_off_labels, dyskinesia_labels, tremor_labels = prepare_data(condition=condition)
 subject_ids, measurement_ids, all_data, _, on_off_labels, dyskinesia_labels, tremor_labels = load_data(condition=condition)
-# new_baseline()
-# print(on_off_labels.shape)
-# print(len(on_off_labels[0]))
-# print(len(all_data[0]))
-# print(all_data[0][0].shape)
-# exit()
+plot_predictions(all_data, tremor_labels, on_off_labels)
 
-start = time.time()
-summary = training(all_data, tremor_labels, on_off_labels)
-end = time.time()
-time_taken = (end - start)/60 # in minutes
-print('\nTraining of all subjects took {:.3f} minutes\n'.format(time_taken))
-print(summary)
+
+# start = time.time()
+# summary = training(all_data, tremor_labels, on_off_labels)
+# end = time.time()
+# time_taken = (end - start)/60 # in minutes
+# print('\nTraining of all subjects took {:.3f} minutes\n'.format(time_taken))
+# print(summary)
 
 # for subject_labels in tremor_labels:
 # 	count = {
