@@ -18,7 +18,7 @@ from tensorflow.keras.regularizers import l1, l2
 import tensorflow.keras.backend as K
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
+os.environ["CUDA_VISIBLE_DEVICES"]="6"
 
 def prepare_data(condition=False):
 	'''
@@ -231,7 +231,6 @@ def baseline(which='all'):
 def extendData(x):
 
 	extended_x = []
-
 	dataLength = max(list(map(lambda i: i.shape[0], x)))
 	for x_ in x:
 
@@ -270,6 +269,50 @@ def extendData(x):
 		zAxisL = rAxisL*np.cos(thetaAxisL)
 		
 		timeL = timeL[0:dataLength]
+		xAxisL = xAxisL[0:dataLength]
+		yAxisL = yAxisL[0:dataLength]
+		zAxisL = zAxisL[0:dataLength]
+
+		extended_x.append(np.stack((xAxisL, yAxisL, zAxisL), axis=1))
+	
+	return np.array(extended_x)
+
+def getAcc(x):
+
+	extended_x = []
+	dataLength = max(list(map(lambda i: i.shape[0], x)))
+	for x_ in x:
+		#Spherical Coordinate Transformation
+		xAxis, yAxis, zAxis = x_[:,0], x_[:,1], x_[:,2]
+		rAxis = np.sqrt(xAxis**2 + yAxis**2 + zAxis**2)
+		thetaAxis = np.arccos(zAxis/rAxis)
+		phiAxis = np.arctan2(yAxis,xAxis)
+		
+		epsilon = 0.05 #Error rate
+		thetaAxisP = np.where((rAxis < 1 + epsilon) & (rAxis > 1 - epsilon), thetaAxis, np.nan)
+		phiAxisP = np.where((rAxis < 1 + epsilon) & (rAxis > 1 - epsilon), phiAxis, np.nan)
+		rAxisP = np.where((rAxis < 1 + epsilon) & (rAxis > 1 - epsilon), rAxis, np.nan)
+
+		nanTable = pd.DataFrame({"Time": time, 
+						   "R":rAxisP, 
+						   "Phi":phiAxisP, 
+						   "Theta":thetaAxisP})
+
+		nanTable = nanTable.interpolate(method ='linear', limit_direction ='forward')
+
+		thetaAxisP = nanTable['Theta'].to_numpy()
+		rAxisP = nanTable['R'].to_numpy()
+		phiAxisP = nanTable['Phi'].to_numpy()
+		
+		xAxisL = rAxis*np.sin(thetaAxis)*np.cos(phiAxis)-np.sin(thetaAxisP)*np.cos(phiAxisP)
+		yAxisL = rAxis*np.sin(thetaAxis)*np.sin(phiAxis)-np.sin(thetaAxisP)*np.sin(phiAxisP)
+		zAxisL = rAxis*np.cos(thetaAxis)-np.cos(thetaAxisP)
+		
+		while len(xAxisL)<dataLength:
+			xAxisL = np.append(xAxisL,xAxisL)
+			yAxisL = np.append(yAxisL,yAxisL)
+			zAxisL = np.append(zAxisL,zAxisL)
+			
 		xAxisL = xAxisL[0:dataLength]
 		yAxisL = yAxisL[0:dataLength]
 		zAxisL = zAxisL[0:dataLength]
@@ -423,11 +466,8 @@ def training(X, Y, medication, folds=5):
 		print('\nSubject {} starting\n'.format(str(subject_ids[index])))
 
 		# x = pad(x).astype(np.float32)
-		# print(len(x))
-		# print(x[0].shape)
 		x = extendData(x).astype(np.float32)
-		# print(x.shape)
-		# exit()
+		x = getAcc(x).astype(np.float32)
 		y = np.array(Y[index]).astype(np.float32)
 
 		p = np.random.permutation(x.shape[0])
@@ -444,8 +484,10 @@ def training(X, Y, medication, folds=5):
 		# 0.63, 0.49 (no p) # LR (0.5 * 1e-4) 0.73, 0.35
 
 		model_dir = 'models'
-		model_dir = 'models-re-re-re' # running in tmux 3 with scalers
-		model_dir = 'models-re-re-re-re' # running in tmux 4 w/o scalers
+		model_dir = 'models-re-re-re' # running in tmux 3 with scalers extenddata
+		model_dir = 'models-re-re-re-re' # running in tmux 4 w/o scalers extenddata
+		model_dir = 'models-getacc' # running in tmux 1 with scalers getAcc
+		model_dir = 'models-getacc-re' # running in tmux 5 w/o scalers getAcc
 		timeString = time.strftime("%Y%m%d-%H%M%S", time.localtime())
 		log_name = '{}'.format(timeString)
 		log_name = str(model_dir)
